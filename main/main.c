@@ -101,6 +101,7 @@ static void display_task(void *arg)
             tzset();
         }
         check_reset_button();
+        settings_autosave();
         render();
         vTaskDelay(pdMS_TO_TICKS(50));
     }

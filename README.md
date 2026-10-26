@@ -19,8 +19,9 @@ idf.py -p COM3 flash
 Once the clock is on your network, open **http://led-clock.local/** (or `http://<ip>/`;
 `status` prints the IP). The page changes color, brightness, A/P indicator, panel layout,
 time zone, NTP server, Wi-Fi and TX power, and can show the test pattern or reboot.
-Changes show on the clock immediately while you adjust them; press **Save** in the bar
-that appears to keep them (no reboot), or **Revert** to go back. The page has no password, so anyone on
+Changes show on the clock immediately while you adjust them; press **Save now** in the bar
+that appears to store them right away, otherwise they are saved automatically a few seconds
+after your last change. The page has no password, so anyone on
 your network can use it. The setup portal serves the same page.
 
 ## Configure Wi-Fi (no portal needed)

@@ -11,6 +11,7 @@
 #define LED_GPIO           1      /* panel DIN */
 #define RESET_BUTTON_GPIO  9      /* BOOT button on the C3 SuperMini */
 #define RESET_HOLD_MS      3000   /* hold this long to forget Wi-Fi */
+#define SETTINGS_AUTOSAVE_MS 3000 /* save live changes this long after the last one */
 
 /* ---- Panel wiring (settings.layout bit flags) ---------------------------
  * Default 0 = pixels run in columns, zig-zagging, starting top-left.     */
@@ -35,11 +36,13 @@ typedef struct {
 } clock_settings_t;
 
 extern clock_settings_t g_settings;
-extern volatile bool    g_settings_dirty;   /* live changes not yet saved to flash */
 
 void      settings_load(void);
 esp_err_t settings_save(void);
 void      settings_clear_wifi(void);
+void      settings_changed(void);    /* live change made; autosaved once changes settle */
+bool      settings_dirty(void);      /* changes not yet written to flash */
+void      settings_autosave(void);   /* call periodically; saves after SETTINGS_AUTOSAVE_MS idle */
 
 typedef struct { const char *name; const char *posix; } tz_preset_t;
 extern const tz_preset_t TZ_PRESETS[];

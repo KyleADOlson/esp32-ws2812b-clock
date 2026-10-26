@@ -1,6 +1,7 @@
 #include <string.h>
 #include "nvs.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "clock.h"
 
 #define SETTINGS_MAGIC 0xC10C0001u
@@ -8,7 +9,11 @@
 static const char *TAG = "settings";
 
 clock_settings_t g_settings;
-volatile bool g_settings_dirty;
+
+/* Each live change bumps s_gen; a save records the generation it wrote, so a change that
+ * lands while a save is in progress still counts as unsaved. */
+static volatile uint32_t s_gen, s_saved_gen;
+static volatile int64_t  s_changed_us;
 
 const tz_preset_t TZ_PRESETS[] = {
     { "pacific",  "PST8PDT,M3.2.0,M11.1.0" },
@@ -43,7 +48,7 @@ static void set_defaults(clock_settings_t *s)
 void settings_load(void)
 {
     set_defaults(&g_settings);
-    g_settings_dirty = false;
+    s_saved_gen = s_gen;
 
     nvs_handle_t h;
     if (nvs_open("clock", NVS_READONLY, &h) != ESP_OK) {
@@ -68,15 +73,39 @@ void settings_load(void)
 
 esp_err_t settings_save(void)
 {
+    uint32_t gen = s_gen;
     nvs_handle_t h;
     esp_err_t err = nvs_open("clock", NVS_READWRITE, &h);
-    if (err != ESP_OK) return err;
-    err = nvs_set_blob(h, "cfg", &g_settings, sizeof(g_settings));
-    if (err == ESP_OK) err = nvs_commit(h);
-    nvs_close(h);
-    if (err == ESP_OK) g_settings_dirty = false;
-    if (err != ESP_OK) ESP_LOGE(TAG, "save failed: %s", esp_err_to_name(err));
+    if (err == ESP_OK) {
+        err = nvs_set_blob(h, "cfg", &g_settings, sizeof(g_settings));
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    }
+    if (err == ESP_OK) {
+        s_saved_gen = gen;
+    } else {
+        ESP_LOGE(TAG, "save failed: %s", esp_err_to_name(err));
+    }
     return err;
+}
+
+void settings_changed(void)
+{
+    s_changed_us = esp_timer_get_time();
+    s_gen++;
+}
+
+bool settings_dirty(void)
+{
+    return s_gen != s_saved_gen;
+}
+
+void settings_autosave(void)
+{
+    if (!settings_dirty()) return;
+    int64_t now = esp_timer_get_time();
+    if (now - s_changed_us < SETTINGS_AUTOSAVE_MS * 1000LL) return;
+    if (settings_save() != ESP_OK) s_changed_us = now;   /* back off before retrying */
 }
 
 void settings_clear_wifi(void)

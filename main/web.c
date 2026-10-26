@@ -65,8 +65,8 @@ static const char PAGE[] =
 "<input id=txpower type=number min=0 max=20></div>"
 "<div class=card><button class=sec onclick=\"confirm('Reboot the clock?')&&post('/api/reboot')\">"
 "Reboot</button></div><div id=msg></div>"
-"<div id=bar><span>Unsaved changes</span><button class=sec onclick=revert()>Revert</button>"
-"<button onclick=save()>Save</button></div>"
+"<div id=bar><span>Unsaved changes &ndash; saving automatically</span>"
+"<button onclick=save()>Save now</button></div>"
 "<script>"
 "const $=i=>document.getElementById(i);let tmo;"
 "function msg(t){$('msg').textContent=t;clearTimeout(tmo);tmo=setTimeout(()=>$('msg').textContent='',2500)}"
@@ -82,7 +82,6 @@ static const char PAGE[] =
 "layout:$('layout').value,tz:$('tz').value,ntp:$('ntp').value,txpower:$('txpower').value}}"
 "async function save(){const s=await post('/api/settings',Object.assign(all(),{save:1}));"
 "if(s){fill(s);msg('Saved')}}"
-"async function revert(){const s=await post('/api/settings',{revert:1});if(s){fill(s);msg('Reverted')}}"
 "const LAY=['columns, zig-zag','rows, zig-zag','columns','rows'];"
 "for(let i=0;i<16;i++){const o=document.createElement('option');o.value=i;"
 "o.textContent=i+': '+LAY[i&3]+(i&4?', flip L/R':'')+(i&8?', flip T/B':'');$('layout').append(o)}"
@@ -237,7 +236,7 @@ static esp_err_t send_status(httpd_req_t *req)
               ",\"dirty\":%s",
               g_settings.r, g_settings.g, g_settings.b, g_settings.brightness,
               g_settings.ampm ? "true" : "false", g_settings.layout, g_settings.txpower,
-              g_settings_dirty ? "true" : "false");
+              settings_dirty() ? "true" : "false");
 
     sb_printf(&b, ",\"presets\":[");
     for (size_t i = 0; i < TZ_PRESET_COUNT; i++) {
@@ -288,7 +287,7 @@ static esp_err_t bad_request(httpd_req_t *req, const char *why)
 
 /*
  * Applies any fields present to the live settings (the display picks them up immediately).
- * Changes stay in RAM until a request carries save=1; revert=1 reloads the saved settings.
+ * They are written to flash immediately with save=1, otherwise automatically once changes settle.
  */
 static esp_err_t settings_post(httpd_req_t *req)
 {
@@ -296,12 +295,6 @@ static esp_err_t settings_post(httpd_req_t *req)
     long n;
     if (read_body(req, body, sizeof(body)) != ESP_OK) return ESP_FAIL;
 
-    if (form_field(body, "revert", v, sizeof(v))) {
-        settings_load();
-        g_tz_dirty = true;
-        net_apply_tx_power();
-        return send_status(req);
-    }
 
     if (form_field(body, "color", v, sizeof(v))) {
         char *end;
@@ -342,7 +335,7 @@ static esp_err_t settings_post(httpd_req_t *req)
             return ESP_FAIL;
         }
     } else {
-        g_settings_dirty = true;
+        settings_changed();
     }
     return send_status(req);
 }
